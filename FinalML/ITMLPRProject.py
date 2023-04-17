@@ -1,11 +1,11 @@
 """///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 Authors: Nishant Marer Prabhu, Alexander Montes McNiel
-NUID: 002624650
 FileName: ITMLPRProject.py
 Semester: Spring 2023
 Class: Indroduction to Machine Learning and Pattern Recognition
-Description: This file is responsible for reading the data from a processed csv file placed in the same location as the script and then using the 
-ERM technique the labels for each of the data point is predicted
+Description: This Project compares the difference between ERM and MLP models for predicting the outcome of NFL games (home or away team win) 
+based on the dataset included in this repository. Additionally, it examines the outcome of the MLP estimate when using a different number of folds 
+in the cross-validation step. Finally, it summarizes the performance over these different methods in a plot.
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////"""
 import pandas as pd
@@ -13,6 +13,10 @@ import numpy as np
 import numpy.matlib
 from scipy.stats import multivariate_normal
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -31,6 +35,7 @@ def scaleData(DataFrame_NumpyArray):
 def readDatafromDisk(l_pLocation, l_pLabelColumn_Drop, label_Column_Keep, resultColumnName):
     
     datafromdisk = pd.read_csv(l_pLocation)
+    Original_Data_Plotting = datafromdisk
     datafromdisk = datafromdisk.drop(labels=l_pLabelColumn_Drop, axis='columns')
     
     datafromdisk = datafromdisk.sort_values(by=[resultColumnName])
@@ -42,7 +47,7 @@ def readDatafromDisk(l_pLocation, l_pLabelColumn_Drop, label_Column_Keep, result
     X_2DArray_Features = (X_train.T).to_numpy()
     Y_1DArray_Labels = y_train.to_numpy()
     
-    return X_2DArray_Features,Y_1DArray_Labels, FeaturesColumnNames
+    return X_2DArray_Features,Y_1DArray_Labels, FeaturesColumnNames, Original_Data_Plotting
 
 """This function finds the label count"""
 def find_LabelCount(l_pLabelSet, l_pY_LabelSet):
@@ -174,20 +179,81 @@ def regulariseCovarienceMatrix(Lambda,Covarience_Matrix, numofDims):
         
     return cov_RegMatrix
 
+"""Plot the correlation matrix"""
+def plotCorrealtionMatrix(correlation_mtx):
+    
+    plt.figure(figsize=(20, 20))
+    result_corr = correlation_mtx['result'].sort_values(ascending=False)
+    sns.barplot(x=result_corr.index, y=result_corr.values)
+    plt.xticks(rotation=90, fontsize=20)
+    plt.yticks(fontsize=15)
+    plt.xlabel('Features')
+    plt.ylabel('Correlation with result')
+    plt.title('Correlation Coefficients of Dataset Features with Game Result')
+    plt.subplots_adjust(bottom=0.35)
+    plt.show()
+
+"""Perform the K fold cross validation"""
+def kfold_1layer_MLP(nFolds, X_train, y_train):
+    
+    """Perform N-fold cross validation and determine the optimal number of perceptron to use in the neural network"""
+    """Define parameter search"""
+    param_grid = {"hidden_layer_sizes": [(i,) for i in range(1, 21)]}
+    
+    """number of folds"""
+    cv = StratifiedKFold(n_splits=nFolds) 
+    
+    """Use smooth ramp style activation function
+       Preferred stochastic gradient descent optimizer"""
+       
+    mlp = MLPClassifier(max_iter=10000, activation='relu', solver='adam', early_stopping=True)  
+    grid_search = GridSearchCV(mlp, param_grid, scoring="accuracy", cv=cv)
+    grid_search.fit(X_train, y_train)
+    best_params = grid_search.best_params_["hidden_layer_sizes"]
+
+    return best_params
+
+"""Plot the final error graph"""
+def plotFinalGraph(OptimalPminError, nFolds, mlp_errors):
+    
+    fig = plt.figure(figsize = (15, 15))
+    
+    plt.axhline(y = OptimalPminError, color = 'r', linestyle = '-', label = 'Optimal Pmin', linewidth=3)
+    plt.plot(nFolds, mlp_errors, marker='o', label='MLP Classifier')
+    plt.legend(fontsize = 12)
+    plt.xlabel('N-Folds Cross Validation')
+    plt.ylabel('Empirical Probability of Error')
+    plt.title('Optimal error vs MLP Error Estimate', fontsize = 25)
+    plt.show()
+    
 """Main function"""
 def main():
     
     InputData = 'data_preprocessed.csv'
-    label_Column_drop = ['schedule_date','schedule_season','schedule_week','team_home','team_away','score_home','score_away','team_favorite_id','over_under_line','stadium','stadium_neutral','weather_temperature','weather_wind_mph','weather_humidity','weather_detail','over','team_home_division','team_away_division','division_game']
-    label_Column_Keep = ['schedule_playoff','spread_favorite','home_favorite','away_favorite','team_away_current_win_pct','team_home_current_win_pct','team_home_lastseason_win_pct','team_away_lastseason_win_pct','elo_prob1','elo_prob2']
+    label_Column_drop = ['schedule_date','schedule_season','schedule_week','team_home','team_away','schedule_playoff','score_home','score_away','team_favorite_id','over_under_line','stadium','stadium_neutral','weather_temperature','weather_wind_mph','weather_humidity','weather_detail','over','team_home_division','team_away_division','division_game']
+    label_Column_Keep = ['spread_favorite','home_favorite','away_favorite','team_away_current_win_pct','team_home_current_win_pct','team_home_lastseason_win_pct','team_away_lastseason_win_pct','elo_prob1','elo_prob2']
 
     resultColumnName = 'result'
     LabelSet = [0,1]
     DecisionSet = [0,1]
 
     """Read the data set"""
-    X_FeatureSet, Y_LabelSet, FeaturesColumnNames = readDatafromDisk(InputData,label_Column_drop,label_Column_Keep,resultColumnName)
-    OutputDimensionLength = 2
+    X_FeatureSet, Y_LabelSet, FeaturesColumnNames, Original_Data_Plotting = readDatafromDisk(InputData,label_Column_drop,label_Column_Keep,resultColumnName)
+    OutputDimensionLength = len(LabelSet)
+    
+    """Find the Correlation Matrix"""
+    correlation_mtx = Original_Data_Plotting.corr()
+    
+    """PLot Correlation matrix"""
+    plotCorrealtionMatrix(correlation_mtx)
+    
+    target_correlations = correlation_mtx['result'].sort_values()
+    print(target_correlations)
+    
+    """Threshold 1.96/sqrt(number of variables)"""
+    threshold = 1.96/np.sqrt(Original_Data_Plotting.shape[0])
+    important_attributes = target_correlations[abs(target_correlations) > threshold].index
+    print(important_attributes)
     
     Featureset = len(label_Column_Keep)
     #X_FeatureSet = scaleData(X_FeatureSet.T)
@@ -246,7 +312,44 @@ def main():
     plt.ylabel('Decisions')
     plt.xlabel('Labels',loc='center')
     plt.show(block=False)
-  
+    
+    """Now let us perform the prediciton using the MLP classifier and perform the K fold cross validation"""
+    X_train, X_test, y_train, y_test = train_test_split(X_FeatureSet.T, Y_LabelSet, test_size=0.4)
+    
+    """Now find the best network parameters for the neural network"""
+    # Span number of hidden layers in MLP
+    nFolds = np.array([2, 5, 10, 15, 20])
+    
+    """Perform N-fold cross validation and determine the optimal number of perceptron to use in the neural network"""
+    best_params = []
+    mlp_errors = []
+
+    for i in range(len(nFolds)):
+        """Perform N-fold cross validation in function"""
+        best_params.append(kfold_1layer_MLP(nFolds[i], X_train, y_train)) 
+
+        best_mlp = None
+        best_score = -np.inf
+        for random_state in range(100):  # Train 5 models with different random states
+            mlp = MLPClassifier(hidden_layer_sizes=best_params[i], activation="relu",
+                                max_iter=10000, random_state=random_state, early_stopping=True)  # Add early stopping
+            mlp.fit(X_train, y_train)
+            score = mlp.score(X_train, y_train)
+            if score > best_score:
+                best_score = score
+            best_mlp = mlp
+
+        """Apply softmax function to the output of the neural network using predict_proba"""
+        mlp_predicted_prob = best_mlp.predict_proba(X_test)
+        
+        """Use the argmax function to make the prediction based on highest likelihood"""
+        mlp_predicted_labels = np.argmax(mlp_predicted_prob, axis=1)
+        mlp_errors.append(1 - accuracy_score(y_test, mlp_predicted_labels))
+    
+    print('The Error generated by MLP')
+    print(mlp_errors)
+    plotFinalGraph(PminError, nFolds, mlp_errors)
+    
 """Call the main function"""      
 if __name__ == "__main__":
     main()          
